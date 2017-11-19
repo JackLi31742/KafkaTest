@@ -7,6 +7,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 
+import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.FSDataOutputStream;
+import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.yarn.api.records.NodeReport;
 import org.apache.hadoop.yarn.api.records.NodeState;
@@ -14,6 +17,7 @@ import org.apache.hadoop.yarn.api.records.Resource;
 import org.apache.hadoop.yarn.client.api.YarnClient;
 import org.apache.hadoop.yarn.conf.YarnConfiguration;
 import org.apache.hadoop.yarn.exceptions.YarnException;
+import org.apache.kafka.clients.producer.KafkaProducer;
 import org.cripac.isee.vpe.entities.Report;
 import org.cripac.isee.vpe.entities.Report.ClusterInfo.ApplicationInfos;
 import org.cripac.isee.vpe.entities.Report.ClusterInfo.Nodes;
@@ -33,14 +37,33 @@ public class KafkaConsumer
 	private final Logger log = LoggerFactory.getLogger(KafkaConsumer.class);
 	public static final String REPORT_TOPIC = "monitor-desc-";
 	private String topic;
-
+	private	static Configuration conf;
+	private static FileSystem fs;
+	private KafkaProducer<String, String> reportProducer;
 	public KafkaConsumer(String topic){  
         super();  
         this.topic = topic;  
     }
 
-	public void report() {
-		ConsumerConnector consumer = createConsumer();
+	
+	public String getTopic() {
+		return topic;
+	}
+
+
+	public void setTopic(String topic) {
+		this.topic = topic;
+	}
+
+
+	public KafkaConsumer() {
+		super();
+		// TODO Auto-generated constructor stub
+	}
+
+
+	public void report(String topic,Report reportAll,ConsumerConnector consumer) throws IOException {
+		
 		Map<String, Integer> topicCountMap = new HashMap<String, Integer>();
 		topicCountMap.put(topic, 1); // 一次从主题中获取一个数据
 		Map<String, List<KafkaStream<byte[], byte[]>>> messageStreams = consumer.createMessageStreams(topicCountMap);
@@ -50,8 +73,30 @@ public class KafkaConsumer
 			String message = new String(iterator.next().message());
 			System.out.println("接收到的监控信息是: " + message);
 			Report report=new Gson().fromJson(message,Report.class);
-			List<ApplicationInfos> appList=report.clusterInfo.applicationInfosList;
-			log.info("接收到的app编号是: " + appList.toString());
+			reportAll.serverInfosMap.putAll(report.serverInfosMap);
+			reportAll.clusterInfo.nodeInfosList.addAll(report.clusterInfo.nodeInfosList);
+			for (int i = 0; i < report.clusterInfo.applicationInfosList.size(); i++) {
+				ApplicationInfos applicationInfos=report.clusterInfo.applicationInfosList.get(i);
+				ApplicationInfos applicationInfosAll=new ApplicationInfos();
+				applicationInfosAll.applicationId=applicationInfos.applicationId;
+				applicationInfosAll.neededResourceMemory=applicationInfos.neededResourceMemory;
+				applicationInfosAll.neededResourceVcore=applicationInfos.neededResourceVcore;
+				applicationInfosAll.reservedResourceMemory=applicationInfos.reservedResourceMemory;
+				applicationInfosAll.reservedResourceVcore=applicationInfos.reservedResourceVcore;
+				applicationInfosAll.usedResourceMemory=applicationInfos.usedResourceMemory;
+				applicationInfosAll.usedResourceVcore=applicationInfos.usedResourceVcore;
+				applicationInfosAll.contarinerInfosList.addAll(applicationInfos.contarinerInfosList);
+				applicationInfosAll.eachAppNodeMap.putAll(applicationInfos.eachAppNodeMap);
+				reportAll.clusterInfo.applicationInfosList.add(applicationInfosAll);
+				
+			}
+			
+//			List<ApplicationInfos> appList=report.clusterInfo.applicationInfosList;
+//			log.info("接收到的app编号是: " + appList.toString());
+			//
+			FileSystem hdfs=HDFSOperation();
+			String storeDir="/user/vpe.cripac";
+			storeJson(hdfs,storeDir,new Gson().toJson(reportAll));
 		}
 	}
 
@@ -63,7 +108,7 @@ public class KafkaConsumer
 		return Consumer.createJavaConsumerConnector(new ConsumerConfig(properties));
 	}
 
-	public static void main(String[] args) {
+	public static void main(String[] args) throws YarnException, IOException {
 //		String ipString;
 //        try {
 //        	ipString=WebToolUtils.getLocalIP();
@@ -71,8 +116,16 @@ public class KafkaConsumer
 //			// TODO: handle exception
 //			ipString="Unknown ip";
 //		}
-		new KafkaConsumer(REPORT_TOPIC+"gpu1608").report();// 使用kafka集群中创建好的主题 test
-
+		
+		KafkaConsumer kafkaConsumer =new KafkaConsumer();
+		List<String> nodeNamesList=kafkaConsumer.getNodesName(kafkaConsumer.getYarnClient());
+		Report reportAll=new Report();
+		ConsumerConnector consumer = kafkaConsumer.createConsumer();
+		for (int i = 0; i < nodeNamesList.size(); i++) {
+			
+			kafkaConsumer.report(nodeNamesList.get(i),reportAll,consumer);// 使用kafka集群中创建好的主题 test
+		}
+		
 	}
 	
 	/**
@@ -92,16 +145,46 @@ public class KafkaConsumer
 		yarnClient.start();
 		return yarnClient;
 	}
-	
+	/**
+	 * 为了方便，加入了topic的前缀
+	 * LANG
+	 * @param yarnClient
+	 * @return
+	 * @throws YarnException
+	 * @throws IOException
+	 */
 	public List<String> getNodesName(YarnClient yarnClient) throws YarnException, IOException{
 		List<NodeReport> nodeList=yarnClient.getNodeReports(NodeState.RUNNING);
 		List<String> nodeNamesList=new ArrayList<String>();
 		for (int i = 0; i < nodeList.size(); i++) {
 			
 			NodeReport nodeReport=nodeList.get(i);
-			nodeNamesList.add(nodeReport.getNodeId().getHost());
+			nodeNamesList.add(REPORT_TOPIC+nodeReport.getNodeId().getHost());
 			
 		}
 		return nodeNamesList;
+	}
+	
+	
+	
+	public FileSystem HDFSOperation() throws IOException{
+		conf = new Configuration();
+		conf.set("fs.default.name", "hdfs://172.18.33.84:8020");
+      String hadoopHome = System.getenv("HADOOP_HOME");
+      conf.addResource(new Path(hadoopHome + "/etc/hadoop/core-site.xml"));
+      conf.addResource(new Path(hadoopHome + "/etc/hadoop/yarn-site.xml"));
+      conf.setBoolean("dfs.support.append", true);
+//      conf.set("fs.hdfs.impl", DistributedFileSystem.class.getName(), "LaS-VPE-Platform-Web");
+//      conf.set("fs.file.impl", LocalFileSystem.class.getName(), "LaS-VPE-Platform-Web");
+		fs = FileSystem.get(conf);
+		return fs;
+	}
+	
+	public void storeJson(FileSystem hdfs,String storeDir,String reportAllJson) throws IllegalArgumentException, IOException{
+		final FSDataOutputStream outputStream = hdfs.create(new Path(storeDir + "/monitor.txt"));
+		outputStream.writeBytes(reportAllJson);
+		outputStream.flush();
+		outputStream.close();
+		
 	}
 }
