@@ -73,30 +73,30 @@ public class KafkaConsumer
 			String message = new String(iterator.next().message());
 			System.out.println("接收到的监控信息是: " + message);
 			Report report=new Gson().fromJson(message,Report.class);
-			reportAll.serverInfosMap.putAll(report.serverInfosMap);
-			reportAll.clusterInfo.nodeInfosList.addAll(report.clusterInfo.nodeInfosList);
-			for (int i = 0; i < report.clusterInfo.applicationInfosList.size(); i++) {
-				ApplicationInfos applicationInfos=report.clusterInfo.applicationInfosList.get(i);
-				ApplicationInfos applicationInfosAll=new ApplicationInfos();
-				applicationInfosAll.applicationId=applicationInfos.applicationId;
-				applicationInfosAll.neededResourceMemory=applicationInfos.neededResourceMemory;
-				applicationInfosAll.neededResourceVcore=applicationInfos.neededResourceVcore;
-				applicationInfosAll.reservedResourceMemory=applicationInfos.reservedResourceMemory;
-				applicationInfosAll.reservedResourceVcore=applicationInfos.reservedResourceVcore;
-				applicationInfosAll.usedResourceMemory=applicationInfos.usedResourceMemory;
-				applicationInfosAll.usedResourceVcore=applicationInfos.usedResourceVcore;
-				applicationInfosAll.contarinerInfosList.addAll(applicationInfos.contarinerInfosList);
-				applicationInfosAll.eachAppNodeMap.putAll(applicationInfos.eachAppNodeMap);
-				reportAll.clusterInfo.applicationInfosList.add(applicationInfosAll);
-				
-			}
+//			reportAll.serverInfosMap.putAll(report.serverInfosMap);
+//			reportAll.clusterInfo.nodeInfosList.addAll(report.clusterInfo.nodeInfosList);
+//			for (int i = 0; i < report.clusterInfo.applicationInfosList.size(); i++) {
+//				ApplicationInfos applicationInfos=report.clusterInfo.applicationInfosList.get(i);
+//				ApplicationInfos applicationInfosAll=new ApplicationInfos();
+//				applicationInfosAll.applicationId=applicationInfos.applicationId;
+//				applicationInfosAll.neededResourceMemory=applicationInfos.neededResourceMemory;
+//				applicationInfosAll.neededResourceVcore=applicationInfos.neededResourceVcore;
+//				applicationInfosAll.reservedResourceMemory=applicationInfos.reservedResourceMemory;
+//				applicationInfosAll.reservedResourceVcore=applicationInfos.reservedResourceVcore;
+//				applicationInfosAll.usedResourceMemory=applicationInfos.usedResourceMemory;
+//				applicationInfosAll.usedResourceVcore=applicationInfos.usedResourceVcore;
+//				applicationInfosAll.contarinerInfosList.addAll(applicationInfos.contarinerInfosList);
+//				applicationInfosAll.eachAppNodeMap.putAll(applicationInfos.eachAppNodeMap);
+//				reportAll.clusterInfo.applicationInfosList.add(applicationInfosAll);
+//				
+//			}
 			
 //			List<ApplicationInfos> appList=report.clusterInfo.applicationInfosList;
 //			log.info("接收到的app编号是: " + appList.toString());
 			//
-			FileSystem hdfs=HDFSOperation();
-			String storeDir="/user/vpe.cripac";
-			storeJson(hdfs,storeDir,new Gson().toJson(reportAll));
+//			FileSystem hdfs=HDFSOperation();
+//			String storeDir="/user/vpe.cripac";
+//			storeJson(hdfs,storeDir,new Gson().toJson(reportAll));
 		}
 	}
 
